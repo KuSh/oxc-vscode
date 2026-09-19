@@ -16,6 +16,22 @@ export enum FixKind {
   All = "all",
 }
 
+/**
+ * An additional project root below the workspace folder.
+ *
+ * - a `string` is a path or a glob, relative to the workspace folder
+ * - `{ directory }` is equivalent to the `string` form, `{ pattern }` is its
+ *   `eslint.workingDirectories` alias. Both accept a `"!cwd"` flag, which the
+ *   Oxc language server ignores.
+ * - `{ mode: "auto" }` lets the language server detect the directories
+ *   which contain both a `package.json` and an oxlint/oxfmt configuration file
+ */
+export type WorkingDirectory =
+  | string
+  | { directory: string; "!cwd"?: boolean }
+  | { pattern: string; "!cwd"?: boolean }
+  | { mode: "auto" };
+
 export type RuleCustomization = {
   autofix?: boolean;
   severity?: "error" | "warning" | "info" | "hint" | "off";
@@ -100,6 +116,16 @@ interface WorkspaceConfigInterface {
   flags?: Record<string, string>;
 
   /**
+   * Additional project roots below the workspace folder.
+   * Every entry is handled by the language server as if it were its own workspace folder.
+   *
+   * `oxc.workingDirectories`
+   *
+   * @default []
+   */
+  workingDirectories?: WorkingDirectory[];
+
+  /**
    * Path to an oxfmt configuration file
    * `oxc.fmt.configPath`
    */
@@ -120,7 +146,7 @@ export type OxlintWorkspaceConfigInterface = Omit<
 
 export type OxfmtWorkspaceConfigInterface = Pick<
   WorkspaceConfigInterface,
-  "fmt.configPath" | "fmt.disableNestedConfig"
+  "fmt.configPath" | "fmt.disableNestedConfig" | "workingDirectories"
 >;
 
 type PathSettingKey = "configPath" | "tsConfigPath" | "fmt.configPath";
@@ -134,6 +160,7 @@ export class WorkspaceConfig {
   private _disableNestedConfig: boolean = false;
   private _fixKind: FixKind | null = null;
   private _rulesCustomization: Record<string, RuleCustomization> | null = null;
+  private _workingDirectories: WorkingDirectory[] = [];
 
   private _formattingConfigPath: string | null = null;
   private _formattingDisableNestedConfig: boolean = false;
@@ -176,6 +203,8 @@ export class WorkspaceConfig {
       this.configuration.get<boolean>("fmt.disableNestedConfig") ?? false;
     this._rulesCustomization =
       this.configuration.get<Record<string, RuleCustomization>>("lint.customization") ?? null;
+    this._workingDirectories =
+      this.configuration.get<WorkingDirectory[]>("workingDirectories") ?? [];
   }
 
   private getResolvedPathSetting(section: PathSettingKey): string | null {
@@ -240,6 +269,11 @@ export class WorkspaceConfig {
     }
     if (
       event.affectsConfiguration(`${ConfigService.namespace}.lint.customization`, this.workspace)
+    ) {
+      return true;
+    }
+    if (
+      event.affectsConfiguration(`${ConfigService.namespace}.workingDirectories`, this.workspace)
     ) {
       return true;
     }
@@ -349,6 +383,10 @@ export class WorkspaceConfig {
     return this._rulesCustomization;
   }
 
+  get workingDirectories(): WorkingDirectory[] {
+    return this._workingDirectories;
+  }
+
   get formattingConfigPath(): string | null {
     return this._formattingConfigPath;
   }
@@ -384,6 +422,8 @@ export class WorkspaceConfig {
       disableNestedConfig: this.disableNestedConfig,
       fixKind: this.fixKind ?? undefined,
       rulesCustomization: this.rulesCustomization ?? undefined,
+      // always sent, an empty list unambiguously clears the working directories
+      workingDirectories: this.workingDirectories,
       // keep for backward compatibility
       run: this.runTrigger,
       // deprecated, kept for backward compatibility
@@ -400,6 +440,8 @@ export class WorkspaceConfig {
       ["fmt.experimental"]: true,
       ["fmt.configPath"]: this.formattingConfigPath ?? undefined,
       ["fmt.disableNestedConfig"]: this.formattingDisableNestedConfig,
+      // always sent, an empty list unambiguously clears the working directories
+      workingDirectories: this.workingDirectories,
     };
   }
 }
