@@ -23,7 +23,7 @@ import {
 import { OxcCommands } from "../commands";
 import { ConfigService } from "../ConfigService";
 import StatusBarItemHandler from "../StatusBarItemHandler";
-import { onClientNotification, runExecutable } from "./lsp_helper";
+import { createTraceOutputChannel, onClientNotification, runExecutable } from "./lsp_helper";
 import ToolInterface from "./ToolInterface";
 import type { BinarySearchResult } from "../findBinary";
 
@@ -268,6 +268,7 @@ export default class FormatterTool implements ToolInterface {
   private readonly restartCommand: { dispose: () => void };
   private readonly toggleEnableCommand: { dispose: () => void };
   private readonly formatActionProvider: { dispose: () => void };
+  private readonly traceOutputChannel: LogOutputChannel;
 
   constructor(
     private readonly outputChannel: LogOutputChannel,
@@ -310,6 +311,8 @@ export default class FormatterTool implements ToolInterface {
         providedCodeActionKinds: [formatCodeActionKind],
       },
     );
+
+    this.traceOutputChannel = createTraceOutputChannel(this.outputChannel);
   }
 
   getLspVersion(): string | undefined {
@@ -363,7 +366,7 @@ export default class FormatterTool implements ToolInterface {
       documentSelector: this.documentSelectors,
       initializationOptions: this.configService.formatterServerConfig,
       outputChannel: this.outputChannel,
-      traceOutputChannel: this.outputChannel,
+      traceOutputChannel: this.traceOutputChannel,
       middleware: {
         workspace: {
           configuration: (params: ConfigurationParams) => {
@@ -470,6 +473,7 @@ export default class FormatterTool implements ToolInterface {
     this.restartCommand.dispose();
     this.toggleEnableCommand.dispose();
     this.formatActionProvider.dispose();
+    this.traceOutputChannel.dispose();
   }
 
   private updateStatusBar() {

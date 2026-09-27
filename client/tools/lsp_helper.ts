@@ -1,9 +1,66 @@
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import { LogOutputChannel, window } from "vscode";
+import { EventEmitter, LogLevel, LogOutputChannel, window, workspace } from "vscode";
 import { Executable, MessageType, ShowMessageParams } from "vscode-languageclient/node";
 import type { BinarySearchResult } from "../findBinary";
 import { getShellEnv } from "../getShellEnv";
+
+/**
+ * Get the currently configured trace setting for the oxc language server.
+ */
+const getConfiguredTrace = (): "off" | "messages" | "verbose" =>
+  workspace.getConfiguration("oxc").get<"off" | "messages" | "verbose">("trace.server", "off");
+
+/**
+ * Get the corresponding LogLevel for the given trace setting.
+ */
+const getLogLevel = (trace: "off" | "messages" | "verbose"): LogLevel =>
+  trace === "off" ? LogLevel.Off : LogLevel.Trace;
+/**
+ * vscode-languageclient v10 only forwards LSP protocol traces to the trace output
+ * channel when that channel's *own* log level is set to `Trace`, ignoring the
+ * `oxc.trace.server` setting entirely otherwise (channel log level defaults to `Info`).
+ * Wrap the channel so tracing is controlled by `oxc.trace.server` again, like before v10.
+ * The wrapped log level is kept off while `oxc.trace.server` is `off`, because v10 falls
+ * back to `messages` if the setting is off while the channel's log level is `Trace`.
+ * See https://github.com/microsoft/vscode-languageserver-node/issues/1754.
+ */
+export function createTraceOutputChannel(channel: LogOutputChannel): LogOutputChannel {
+  const appendLine = (message: string) => channel.appendLine(message);
+  const logLevelEmitter = new EventEmitter<LogLevel>();
+
+  let configuredTrace = getConfiguredTrace();
+  let logLevel = getLogLevel(configuredTrace);
+  const configListener = workspace.onDidChangeConfiguration((event) => {
+    if (!event.affectsConfiguration("oxc.trace.server")) {
+      return;
+    }
+    const newTrace = getConfiguredTrace();
+    if (newTrace !== configuredTrace) {
+      configuredTrace = newTrace;
+      logLevel = getLogLevel(configuredTrace);
+      logLevelEmitter.fire(logLevel);
+    }
+  });
+
+  return {
+    ...channel,
+    get logLevel() {
+      return logLevel;
+    },
+    onDidChangeLogLevel: logLevelEmitter.event,
+    trace: appendLine,
+    debug: appendLine,
+    info: appendLine,
+    warn: appendLine,
+    error: appendLine,
+    dispose: () => {
+      configListener.dispose();
+      logLevelEmitter.dispose();
+      channel.dispose();
+    },
+  };
+}
 
 export async function runExecutable(
   binary: BinarySearchResult,

@@ -29,7 +29,7 @@ import { OxcCommands } from "../commands";
 import { ConfigService } from "../ConfigService";
 import StatusBarItemHandler from "../StatusBarItemHandler";
 import { VSCodeConfig } from "../VSCodeConfig";
-import { onClientNotification, runExecutable } from "./lsp_helper";
+import { createTraceOutputChannel, onClientNotification, runExecutable } from "./lsp_helper";
 import ToolInterface from "./ToolInterface";
 import type { BinarySearchResult } from "../findBinary";
 
@@ -151,6 +151,7 @@ export default class LinterTool implements ToolInterface {
   private readonly restartCommand: { dispose: () => void };
   private readonly toggleEnableCommand: { dispose: () => void };
   private readonly applyAllFixesCommand: { dispose: () => void };
+  private readonly traceOutputChannel: LogOutputChannel;
 
   constructor(
     private readonly outputChannel: LogOutputChannel,
@@ -198,6 +199,8 @@ export default class LinterTool implements ToolInterface {
         await this.client.sendRequest(ExecuteCommandRequest.type, params);
       },
     );
+
+    this.traceOutputChannel = createTraceOutputChannel(this.outputChannel);
   }
 
   getLspVersion(): string | undefined {
@@ -274,7 +277,7 @@ export default class LinterTool implements ToolInterface {
       ],
       initializationOptions: this.configService.oxlintServerConfig,
       outputChannel: this.outputChannel,
-      traceOutputChannel: this.outputChannel,
+      traceOutputChannel: this.traceOutputChannel,
       diagnosticPullOptions: {
         onChange: true,
         onSave: true,
@@ -391,6 +394,7 @@ export default class LinterTool implements ToolInterface {
     this.restartCommand.dispose();
     this.toggleEnableCommand.dispose();
     this.applyAllFixesCommand.dispose();
+    this.traceOutputChannel.dispose();
   }
 
   async toggleClient(configService: ConfigService): Promise<void> {
