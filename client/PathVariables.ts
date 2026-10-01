@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { env } from "node:process";
+import { workspace } from "vscode";
 
 /**
  * Substitutes the variables supported in user configured binary paths.
@@ -16,8 +17,13 @@ export function substitutePathVariables(value: string): string {
   // the replacement is a function, so that a `$` in a substituted value is not a pattern
   return value.replaceAll(
     /\$\{(userHome|env:([^}]+))\}/g,
-    (match, _variable: string, name: string | undefined) =>
-      name === undefined ? (homeDirectory() ?? match) : (env[name] ?? ""),
+    (match, _variable: string, name: string | undefined) => {
+      if (name === undefined) {
+        return homeDirectory() ?? match;
+      }
+      // `${env:NAME}` is left as it is in an untrusted workspace
+      return workspace.isTrusted ? (env[name] ?? "") : match;
+    },
   );
 }
 
